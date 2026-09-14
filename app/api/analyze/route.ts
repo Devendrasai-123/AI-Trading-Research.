@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "@/lib/supabase";
-import { extractExperiment } from "@/lib/llm";
+import { buildFallbackExperiment, extractExperiment } from "@/lib/llm";
 import type { Experiment } from "@/types/experiment";
 
 export async function POST(request: NextRequest) {
@@ -19,26 +19,28 @@ export async function POST(request: NextRequest) {
 
   let experiment: Experiment;
   try {
-    experiment = await extractExperiment(question);
+    experiment = await Promise.race([
+      extractExperiment(question),
+      new Promise<Experiment>((_, reject) =>
+        setTimeout(() => reject(new Error("LLM analysis timed out")), 5000),
+      ),
+    ]);
   } catch (err) {
     console.error("failed to extract experiment", err);
-    return NextResponse.json(
-      { error: "failed to analyze question" },
-      { status: 502 },
-    );
+    experiment = buildFallbackExperiment(question);
   }
 
   try {
-    const { error } = await getSupabase()
-      .from("experiments")
-      .insert({ question, experiment });
+    const save = getSupabase().from("experiments").insert({ question, experiment });
+    const { error } = await Promise.race([
+      save,
+      new Promise<{ error: Error }>((resolve) =>
+        setTimeout(() => resolve({ error: new Error("Supabase save timed out") }), 5000),
+      ),
+    ]);
     if (error) throw error;
   } catch (err) {
     console.error("failed to save experiment", err);
-    return NextResponse.json(
-      { error: "failed to save experiment" },
-      { status: 500 },
-    );
   }
 
   return NextResponse.json({ experiment });

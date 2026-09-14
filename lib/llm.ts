@@ -24,9 +24,38 @@ export async function callLLM(prompt: string): Promise<string> {
     model: process.env.LLM_MODEL ?? "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 4096,
-  }, { timeout: 30000 });
+  }, { timeout: 8000 });
 
   return response.choices[0]?.message.content ?? "";
+}
+
+export function buildFallbackExperiment(question: string): Experiment {
+  const lowerQuestion = question.toLowerCase();
+  const instrumentMatch = question.match(
+    /\b(nifty|sensex|bitcoin|btc|ethereum|eth|gold|silver|spy|qqq)\b/i,
+  );
+  const timeframeMatch = question.match(
+    /\b(daily|day|weekly|week|monthly|month|intraday|hourly|hour)\b/i,
+  );
+  const hasEntry = /\b(buy|buying|enter|entry|long)\b/i.test(question);
+
+  return {
+    instrument: instrumentMatch?.[1]?.toUpperCase() ?? null,
+    timeframe: timeframeMatch?.[1] ?? null,
+    entryCondition: hasEntry ? question.trim() : null,
+    exitCondition: null,
+    holdingPeriod: null,
+    filters: /volatility|volatile/i.test(question)
+      ? ["high-volatility periods"]
+      : [],
+    researchQuestion: question.trim(),
+    missingFields: ["exitCondition", "holdingPeriod"],
+    clarifyingQuestions: [
+      "What exit condition should be used?",
+      "How long should each position be held?",
+    ],
+    confidence: lowerQuestion.length > 20 ? 0.35 : 0.2,
+  };
 }
 
 const EXTRACT_SYSTEM_PROMPT = `You are a quantitative research assistant. A user will ask a natural-language question about a trading strategy. Your job is to extract a structured experiment from it.
