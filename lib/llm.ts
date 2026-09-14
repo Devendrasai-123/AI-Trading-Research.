@@ -24,7 +24,7 @@ export async function callLLM(prompt: string): Promise<string> {
     model: process.env.LLM_MODEL ?? "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],
     max_tokens: 4096,
-  });
+  }, { timeout: 30000 });
 
   return response.choices[0]?.message.content ?? "";
 }

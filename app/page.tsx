@@ -99,11 +99,14 @@ export default function Home() {
     if (!question.trim()) return;
     setLoading(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Request failed");
@@ -111,8 +114,15 @@ export default function Home() {
       setAnswers({});
       setStage(data.experiment.missingFields.length > 0 ? "clarify" : "test");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      setError(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Analysis timed out. Check the LLM settings in your deployment."
+          : err instanceof Error
+            ? err.message
+            : "Request failed",
+      );
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   }
